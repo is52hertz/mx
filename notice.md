@@ -1,5 +1,11 @@
 # notice
 
+## Installation and releases
+
+- `install.sh` installs SHA256-verified GitHub Release binaries into `~/.local/bin` for macOS/Linux AMD64/ARM64. It checks FFmpeg and optional ncm2mp3, asks via `/dev/tty` before installing missing dependencies, and only suggests commands without a terminal. It does not bootstrap Homebrew or Rust/Cargo.
+- `scripts/build-release.sh` creates four archives and `SHA256SUMS` in ignored `dist/`. The tag-triggered release workflow runs verification and publishes these assets. Installer URLs target `is52hertz/mx`.
+- Required FFmpeg still missing after installation yields exit 1 even though mx itself is installed; optional ncm2mp3 does not affect the exit code. Download remains a placeholder, so yt-dlp is not an installation requirement yet.
+
 ## Planned: `mx dl` (designed 2026-10-14, not started)
 
 Agreed with the user; build on a `feat/dl` branch when picked up.

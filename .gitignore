@@ -4,3 +4,13 @@
 
 # build output
 /mx
+/dist/
+__pycache__/
+
+# secrets
+.env*
+secrets/
+*.pem
+*.key
+*.p12
+*.pfx
