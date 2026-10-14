@@ -42,6 +42,7 @@ type stream struct {
 	ChannelLayout string            `json:"channel_layout"`
 	BitRate       string            `json:"bit_rate"`
 	Tags          map[string]string `json:"tags"`
+	Disposition   map[string]int    `json:"disposition"`
 }
 
 type probeMsg struct {
@@ -51,25 +52,34 @@ type probeMsg struct {
 
 func runProbe(path string) tea.Cmd {
 	return func() tea.Msg {
-		// Keep a leading "-" from being parsed as an ffprobe option.
-		if strings.HasPrefix(path, "-") {
-			path = "./" + path
-		}
-		out, err := exec.Command("ffprobe", "-v", "error", "-print_format", "json",
-			"-show_format", "-show_streams", path).Output()
-		if err != nil {
-			var ee *exec.ExitError
-			if errors.As(err, &ee) && len(ee.Stderr) > 0 {
-				err = errors.New(strings.TrimSpace(string(ee.Stderr)))
-			}
-			return probeMsg{err: err}
-		}
-		var p probe
-		if err := json.Unmarshal(out, &p); err != nil {
-			return probeMsg{err: fmt.Errorf("parse ffprobe output: %w", err)}
-		}
-		return probeMsg{probe: &p}
+		p, err := probeFile(path)
+		return probeMsg{probe: p, err: err}
 	}
+}
+
+func probeFile(path string) (*probe, error) {
+	out, err := exec.Command("ffprobe", "-v", "error", "-print_format", "json",
+		"-show_format", "-show_streams", safeInput(path)).Output()
+	if err != nil {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) && len(ee.Stderr) > 0 {
+			err = errors.New(strings.TrimSpace(string(ee.Stderr)))
+		}
+		return nil, err
+	}
+	var p probe
+	if err := json.Unmarshal(out, &p); err != nil {
+		return nil, fmt.Errorf("parse ffprobe output: %w", err)
+	}
+	return &p, nil
+}
+
+// safeInput keeps a leading "-" from being parsed as an ffmpeg/ffprobe option.
+func safeInput(path string) string {
+	if strings.HasPrefix(path, "-") {
+		return "./" + path
+	}
+	return path
 }
 
 var (

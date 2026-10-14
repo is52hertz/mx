@@ -35,12 +35,17 @@ type model struct {
 	infoFile string
 	probe    *probe
 	probeErr error
+
+	cv convert
 }
 
 func newModel(t tab, args []string) model {
 	m := model{tab: t, args: args, lang: detectLang()}
 	if t == tabInfo && len(args) > 0 {
 		m.infoFile = args[0]
+	}
+	if t == tabConvert {
+		m.cv = newConvert(args)
 	}
 	return m
 }
@@ -49,7 +54,7 @@ func (m model) Init() tea.Cmd {
 	if m.infoFile != "" {
 		return runProbe(m.infoFile)
 	}
-	return nil
+	return m.cv.init()
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -58,7 +63,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 	case probeMsg:
 		m.probe, m.probeErr = msg.probe, msg.err
+	case cvProbedMsg, cvProgressMsg, cvJobDoneMsg:
+		return m, m.cv.update(msg)
 	case tea.KeyPressMsg:
+		if m.tab == tabConvert {
+			if handled, cmd := m.cv.handleKey(msg.String()); handled {
+				return m, cmd
+			}
+		}
 		switch msg.String() {
 		case "L":
 			if m.lang == langEN {
@@ -67,10 +79,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.lang = langEN
 			}
 		case "q", "ctrl+c", "esc":
+			if m.cv.run != nil {
+				m.cv.run.stop() // kill ffmpeg and delete its partial output
+			}
 			return m, tea.Quit
-		case "tab", "right", "l":
+		case "tab":
 			m.tab = (m.tab + 1) % tab(len(tabNames))
-		case "shift+tab", "left", "h":
+		case "shift+tab":
 			m.tab = (m.tab + tab(len(tabNames)) - 1) % tab(len(tabNames))
 		case "1", "2", "3":
 			m.tab = tab(msg.String()[0] - '1')
@@ -99,6 +114,9 @@ func (m model) View() tea.View {
 }
 
 func (m model) bodyView() string {
+	if m.tab == tabConvert {
+		return m.cv.view(m.lang)
+	}
 	if m.tab != tabInfo {
 		content := m.lang.t("(not implemented yet)")
 		if len(m.args) > 0 {

@@ -15,7 +15,7 @@ Usage:
   mx                  open the TUI
   mx info <file>      open the Info panel
   mx dl <url>         open the Download panel
-  mx cv <file> [fmt]  open the Convert panel
+  mx cv <file>... [fmt]  open the Convert panel (batch)
 `
 
 func main() {
