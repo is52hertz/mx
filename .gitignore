@@ -1,0 +1,6 @@
+
+# vibe-init bookkeeping (local; safe to delete)
+.vibe-init/
+
+# build output
+/mx
