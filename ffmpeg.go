@@ -98,6 +98,27 @@ func (f format) canCopy(p *probe) bool {
 	return slices.Contains(f.acopy, a.CodecName)
 }
 
+// coverFormats can embed cover art as an attached picture.
+var coverFormats = []string{"mp3", "m4a", "flac"}
+
+// audioMaps selects the audio plus, where the target supports it, the
+// embedded cover art; any real video stream is always dropped.
+func audioMaps(f format, p *probe) []string {
+	if slices.Contains(coverFormats, f.ext) {
+		n := 0 // index among video streams, as used by "0:v:N"
+		for _, s := range p.Streams {
+			if s.CodecType != "video" {
+				continue
+			}
+			if s.Disposition["attached_pic"] == 1 {
+				return []string{"-map", "0:a:0", "-map", fmt.Sprintf("0:v:%d", n), "-c:v", "copy", "-disposition:v:0", "attached_pic"}
+			}
+			n++
+		}
+	}
+	return []string{"-vn"}
+}
+
 type cvOpts struct {
 	f      format
 	q      quality
@@ -129,7 +150,7 @@ func ffmpegArgs(in, out string, o cvOpts, p *probe) []string {
 				args = append(args, "-tag:v", "hvc1") // playable in QuickTime
 			}
 		default:
-			args = append(args, "-vn", "-c:a", "copy")
+			args = append(append(args, audioMaps(f, p)...), "-c:a", "copy")
 		}
 		return append(args, safeInput(out))
 	}
@@ -169,11 +190,11 @@ func ffmpegArgs(in, out string, o cvOpts, p *probe) []string {
 		}
 		args = append(args, "-vf", vf+",split[a][b];[a]palettegen[p];[b][p]paletteuse", "-an")
 	case "mp3":
-		args = append(args, "-vn", "-c:a", "libmp3lame", "-q:a", pick("0", "2", "5"))
+		args = append(append(args, audioMaps(f, p)...), "-c:a", "libmp3lame", "-q:a", pick("0", "2", "5"))
 	case "m4a":
-		args = append(args, "-vn", "-c:a", "aac", "-b:a", pick("256k", "160k", "96k"))
+		args = append(append(args, audioMaps(f, p)...), "-c:a", "aac", "-b:a", pick("256k", "160k", "96k"))
 	case "flac":
-		args = append(args, "-vn", "-c:a", "flac")
+		args = append(append(args, audioMaps(f, p)...), "-c:a", "flac")
 	case "wav":
 		args = append(args, "-vn", "-c:a", "pcm_s16le")
 	case "opus":

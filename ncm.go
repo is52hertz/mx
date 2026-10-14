@@ -68,6 +68,11 @@ func probeNCM(path string) (*probe, error) {
 		s.BitRate = strconv.Itoa(kbps * 1000)
 	}
 	p.Streams = []stream{s}
+	// ncm2mp3 embeds the cover after the audio, e.g. "Cover: JPEG, 35.64 KB".
+	if kind, _, _ := strings.Cut(info["Cover"], ","); kind != "" {
+		codec := map[string]string{"JPEG": "mjpeg", "PNG": "png"}[kind]
+		p.Streams = append(p.Streams, stream{CodecType: "video", CodecName: codec, Disposition: map[string]int{"attached_pic": 1}})
+	}
 	return p, nil
 }
 
