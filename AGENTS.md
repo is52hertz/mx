@@ -63,6 +63,7 @@ Keep it to durable, cross-session guidance — product, rules, standards, securi
 - **Language / framework conventions**: Go, `gofmt` + `go vet` clean. Bubble Tea v2 import paths are `charm.land/bubbletea/v2` and `charm.land/lipgloss/v2` (not the old `github.com/charmbracelet/*`). Subcommands open a TUI panel; they are shortcuts, not separate non-interactive CLIs.
 - **Security boundary**: external tools are invoked via `exec.Command` with an argv slice — never through a shell, never with string-concatenated commands. User-supplied paths/URLs are passed as single arguments. Never execute downloaded content.
 - **Verify**: `go vet ./... && go build -o mx .`, plus a tmux smoke run for UI changes.
+- **Install**: `go build -o ~/.local/bin/mx .` (on PATH, survives Go upgrades; avoid `go install`, whose GOBIN is the mise per-version dir). Rebuild after changes.
 
 ### Secrets & Sensitive Data
 - Never hardcode secrets or credentials; read them from environment/config. Never print, log, or echo secrets, tokens, or PII.
