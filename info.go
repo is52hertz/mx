@@ -78,17 +78,17 @@ var (
 	errStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 )
 
-func renderProbe(p *probe) string {
+func renderProbe(p *probe, l lang) string {
 	var b strings.Builder
 	kv := func(label, value string) {
 		if value != "" {
-			b.WriteString("  " + labelStyle.Render(label) + value + "\n")
+			b.WriteString("  " + labelStyle.Render(l.t(label)) + value + "\n")
 		}
 	}
 
 	f := p.Format
 	b.WriteString(lipgloss.NewStyle().Bold(true).Render(filepath.Base(f.Filename)) + "\n\n")
-	b.WriteString(sectionStyle.Render("General") + "\n")
+	b.WriteString(sectionStyle.Render(l.t("General")) + "\n")
 	format := f.FormatLongName
 	if f.FormatName != "" {
 		format += " (" + f.FormatName + ")"
@@ -100,7 +100,7 @@ func renderProbe(p *probe) string {
 	kv("Title", f.Tags["title"])
 
 	for _, s := range p.Streams {
-		b.WriteString("\n" + sectionStyle.Render(fmt.Sprintf("#%d %s", s.Index, titleCase(s.CodecType))) + "\n")
+		b.WriteString("\n" + sectionStyle.Render(fmt.Sprintf("#%d %s", s.Index, l.t(titleCase(s.CodecType)))) + "\n")
 		codec := s.CodecName
 		if s.Profile != "" {
 			codec += " (" + s.Profile + ")"
@@ -120,8 +120,8 @@ func renderProbe(p *probe) string {
 			kv("Channels", ch)
 		}
 		kv("Bitrate", fmtBitRate(s.BitRate))
-		if lang := s.Tags["language"]; lang != "und" {
-			kv("Language", lang)
+		if language := s.Tags["language"]; language != "und" {
+			kv("Language", language)
 		}
 		kv("Title", s.Tags["title"])
 	}

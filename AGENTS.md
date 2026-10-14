@@ -16,7 +16,7 @@ Keep it to durable, cross-session guidance — product, rules, standards, securi
 <PROJECT_PHASE>
 ## Project Phase
 
-- **mx** (Go, Bubble Tea v2 + Lip Gloss v2): subcommand routing (`mx`, `info|i`, `dl|d`, `cv|c`) and a three-tab TUI. **Info** works: `mx info <file>` runs ffprobe async (`info.go`) and renders General + per-stream sections; no scrolling yet (long stream lists overflow). Download / Convert are placeholders. Verified by manual tmux smoke tests.
+- **mx** (Go, Bubble Tea v2 + Lip Gloss v2): subcommand routing (`mx`, `info|i`, `dl|d`, `cv|c`) and a three-tab TUI. **Info** works: `mx info <file>` runs ffprobe async (`info.go`) and renders General + per-stream sections; no scrolling yet (long stream lists overflow). Download / Convert are placeholders. UI is bilingual (EN / 简体中文): initial language from `LC_ALL`/`LC_MESSAGES`/`LANG`, `L` toggles at runtime; not persisted. Verified by manual tmux smoke tests.
 </PROJECT_PHASE>
 
 <CORE_RULES>
@@ -59,7 +59,7 @@ Keep it to durable, cross-session guidance — product, rules, standards, securi
 
 ### Coding Standards
 - **Source of truth & persistence**: no persistent state yet; the TUI model is the only state. Inputs come from argv and the TUI.
-- **Architecture & boundaries**: single `package main` while small (`main.go` = CLI routing, `ui.go` = Bubble Tea model + tab shell, one file per panel such as `info.go`). Split into packages only when a second real caller appears.
+- **Architecture & boundaries**: single `package main` while small (`main.go` = CLI routing, `ui.go` = Bubble Tea model + tab shell, one file per panel such as `info.go`; `i18n.go` holds the EN→ZH table — wrap every new user-facing TUI string in `m.lang.t(...)` and add its translation). Split into packages only when a second real caller appears.
 - **Language / framework conventions**: Go, `gofmt` + `go vet` clean. Bubble Tea v2 import paths are `charm.land/bubbletea/v2` and `charm.land/lipgloss/v2` (not the old `github.com/charmbracelet/*`). Subcommands open a TUI panel; they are shortcuts, not separate non-interactive CLIs.
 - **Security boundary**: external tools are invoked via `exec.Command` with an argv slice — never through a shell, never with string-concatenated commands. User-supplied paths/URLs are passed as single arguments. Never execute downloaded content.
 - **Verify**: `go vet ./... && go build -o mx .`, plus a tmux smoke run for UI changes.
