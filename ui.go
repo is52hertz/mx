@@ -25,19 +25,39 @@ var (
 )
 
 type model struct {
-	tab  tab
-	args []string // positional args passed to the subcommand, e.g. a file or URL
+	tab   tab
+	args  []string // positional args passed to the subcommand, e.g. a file or URL
+	width int
+
+	// Info panel state.
+	infoFile string
+	probe    *probe
+	probeErr error
 }
 
 func newModel(t tab, args []string) model {
-	return model{tab: t, args: args}
+	m := model{tab: t, args: args}
+	if t == tabInfo && len(args) > 0 {
+		m.infoFile = args[0]
+	}
+	return m
 }
 
-func (m model) Init() tea.Cmd { return nil }
+func (m model) Init() tea.Cmd {
+	if m.infoFile != "" {
+		return runProbe(m.infoFile)
+	}
+	return nil
+}
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyPressMsg); ok {
-		switch key.String() {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+	case probeMsg:
+		m.probe, m.probeErr = msg.probe, msg.err
+	case tea.KeyPressMsg:
+		switch msg.String() {
 		case "q", "ctrl+c", "esc":
 			return m, tea.Quit
 		case "tab", "right", "l":
@@ -45,7 +65,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "shift+tab", "left", "h":
 			m.tab = (m.tab + tab(len(tabNames)) - 1) % tab(len(tabNames))
 		case "1", "2", "3":
-			m.tab = tab(key.String()[0] - '1')
+			m.tab = tab(msg.String()[0] - '1')
 		}
 	}
 	return m, nil
@@ -61,16 +81,30 @@ func (m model) View() tea.View {
 		tabs[i] = style.Render(name)
 	}
 
-	content := "(not implemented yet)"
-	if len(m.args) > 0 {
-		content += "\nargs: " + strings.Join(m.args, " ")
-	}
-
 	v := tea.NewView(lipgloss.JoinVertical(lipgloss.Left,
 		lipgloss.JoinHorizontal(lipgloss.Top, tabs...),
-		body.Render(content),
+		body.Width(m.width).Render(m.bodyView()),
 		help.Render("tab/1-3 switch · q quit"),
 	))
 	v.AltScreen = true
 	return v
+}
+
+func (m model) bodyView() string {
+	if m.tab != tabInfo {
+		content := "(not implemented yet)"
+		if len(m.args) > 0 {
+			content += "\nargs: " + strings.Join(m.args, " ")
+		}
+		return content
+	}
+	switch {
+	case m.infoFile == "":
+		return "Usage: mx info <file>"
+	case m.probeErr != nil:
+		return errStyle.Render("ffprobe: " + m.probeErr.Error())
+	case m.probe == nil:
+		return "Probing " + m.infoFile + " …"
+	}
+	return renderProbe(m.probe)
 }
