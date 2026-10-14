@@ -18,7 +18,7 @@ var zh = map[string]string{
 	"Download": "下载",
 	"Convert":  "转换",
 
-	"tab/1-3 switch · L 中文 · q quit": "tab/1-3 切换 · L English · q 退出",
+	"tab/1-4 switch · L 中文 · q quit": "tab/1-4 切换 · L English · q 退出",
 	"Usage: mx info <file>":          "用法：mx info <文件>",
 	"Probing %s …":                   "正在读取 %s …",
 	"(not implemented yet)":          "（尚未实现）",
@@ -82,6 +82,15 @@ var zh = map[string]string{
 	"Done: %d succeeded, %d failed":     "完成：成功 %d 个，失败 %d 个",
 	"Canceled: %d succeeded, %d failed": "已取消：成功 %d 个，失败 %d 个",
 	"enter back · q quit":               "enter 返回 · q 退出",
+
+	"Files":        "文件",
+	"Name":         "名称",
+	"Empty folder": "空目录",
+	"%d selected":  "已选 %d 个",
+
+	"space select · a all · enter open · i info · c convert · ← up":    "space 选择 · a 全选 · enter 打开 · i 信息 · c 转换 · ← 上级",
+	"No files: select some in the Files tab, or run mx info <file>...": "没有文件：在「文件」tab 里选择，或运行 mx info <文件>...",
+	"↑↓ scroll · %d–%d / %d lines":                                     "↑↓ 滚动 · 第 %d–%d 行，共 %d 行",
 
 	"Original format": "原格式",
 	"decrypt only":    "仅解密",

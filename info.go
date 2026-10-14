@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 
-	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
 
@@ -45,18 +44,6 @@ type stream struct {
 	BitRate       string            `json:"bit_rate"`
 	Tags          map[string]string `json:"tags"`
 	Disposition   map[string]int    `json:"disposition"`
-}
-
-type probeMsg struct {
-	probe *probe
-	err   error
-}
-
-func runProbe(path string) tea.Cmd {
-	return func() tea.Msg {
-		p, err := probeFile(path)
-		return probeMsg{probe: p, err: err}
-	}
 }
 
 func probeFile(path string) (*probe, error) {
@@ -169,6 +156,9 @@ func fmtSize(s string) string {
 	for n >= 1024 && i < len(units)-1 {
 		n /= 1024
 		i++
+	}
+	if i == 0 {
+		return fmt.Sprintf("%.0f B", n)
 	}
 	return fmt.Sprintf("%.1f %s", n, units[i])
 }

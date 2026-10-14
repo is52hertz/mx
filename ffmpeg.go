@@ -218,24 +218,12 @@ func parseSecs(s string) (float64, bool) {
 	return total, total > 0
 }
 
-// outputName returns the first free "<base>.<ext>" / "<base> (N).<ext>" next
-// to in. With reserve, it atomically creates the file (O_EXCL) so the name
-// cannot be taken, and so a failed run only ever deletes a file mx created.
-func outputName(in, ext string, reserve bool) (string, error) {
-	dir := filepath.Dir(in)
-	base := strings.TrimSuffix(filepath.Base(in), filepath.Ext(in))
+// outputName reserves the first free "<base>.<ext>" / "<base> (N).<ext>"
+// next to in by creating it atomically (O_EXCL), so the name cannot be
+// taken and a failed run only ever deletes a file mx created.
+func outputName(in, ext string) (string, error) {
 	for i := 0; ; i++ {
-		name := base + "." + ext
-		if i > 0 {
-			name = fmt.Sprintf("%s (%d).%s", base, i, ext)
-		}
-		path := filepath.Join(dir, name)
-		if !reserve {
-			if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
-				return path, nil
-			}
-			continue
-		}
+		path := candidateName(in, ext, i)
 		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 		if errors.Is(err, fs.ErrExist) {
 			continue
@@ -245,6 +233,29 @@ func outputName(in, ext string, reserve bool) (string, error) {
 		}
 		return path, f.Close()
 	}
+}
+
+// previewName predicts outputName without touching the disk; taken holds
+// names already promised to earlier files of the same batch.
+func previewName(in, ext string, taken map[string]bool) string {
+	for i := 0; ; i++ {
+		path := candidateName(in, ext, i)
+		if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) && !taken[path] {
+			if taken != nil {
+				taken[path] = true
+			}
+			return path
+		}
+	}
+}
+
+func candidateName(in, ext string, i int) string {
+	base := strings.TrimSuffix(filepath.Base(in), filepath.Ext(in))
+	name := base + "." + ext
+	if i > 0 {
+		name = fmt.Sprintf("%s (%d).%s", base, i, ext)
+	}
+	return filepath.Join(filepath.Dir(in), name)
 }
 
 type cvProgressMsg struct {
@@ -317,7 +328,7 @@ func (r *runner) runJob(ctx context.Context, spec jobSpec) error {
 		return err
 	}
 	if spec.keep {
-		kept, err := outputName(spec.in, strings.TrimPrefix(filepath.Ext(src), "."), true)
+		kept, err := outputName(spec.in, strings.TrimPrefix(filepath.Ext(src), "."))
 		if err == nil {
 			if err = os.Rename(src, kept); err != nil {
 				os.Remove(kept)

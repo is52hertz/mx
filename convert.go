@@ -350,7 +350,7 @@ func (c *convert) start() tea.Cmd {
 func (c *convert) startNext() tea.Cmd {
 	for ; c.cur < len(c.jobs); c.cur++ {
 		j := &c.jobs[c.cur]
-		out, err := outputName(j.in, c.outExt(c.cur), true)
+		out, err := outputName(j.in, c.outExt(c.cur))
 		if err != nil {
 			j.err, j.done = err, true
 			continue
@@ -482,17 +482,16 @@ func (c *convert) view(l lang) string {
 	row(rowKeep, "Keep decrypted", []string{"No", "Yes"}, keep, func(int) bool { return true }, "")
 
 	b.WriteString("\n")
-	outs := make([]string, 0, 2)
-	for i, f := range c.files {
-		if i == 1 && len(c.files) > 2 {
+	outs := make([]string, 0, 3)
+	taken := map[string]bool{}
+	for i, f := range c.files { // predict every name so later ones number correctly
+		out := filepath.Base(previewName(f, c.outExt(i), taken))
+		switch {
+		case i == 0 || i == len(c.files)-1:
+			outs = append(outs, out)
+		case i == 1:
 			outs = append(outs, "…")
-			continue
 		}
-		if i > 0 && i < len(c.files)-1 {
-			continue
-		}
-		out, _ := outputName(f, c.outExt(i), false)
-		outs = append(outs, filepath.Base(out))
 	}
 	b.WriteString("  " + labelStyle.Render(l.t("Output")) + " " + strings.Join(outs, " ") + dimStyle.Render(" "+l.t("(same folder)")) + "\n")
 	b.WriteString("  " + labelStyle.Render(l.t("Command")) + " " + dimStyle.Render(c.commandPreview()) + "\n\n")
@@ -515,7 +514,7 @@ func (c *convert) commandPreview() string {
 	if formats[c.fmtIdx].original {
 		return shellJoin([]string{"ncm2mp3", in})
 	}
-	out, _ := outputName(in, c.outExt(0), false)
+	out := previewName(in, c.outExt(0), nil)
 	src, prefix := in, ""
 	if p.NCM != "" {
 		src = strings.TrimSuffix(in, filepath.Ext(in)) + "." + p.NCM

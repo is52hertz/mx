@@ -12,8 +12,8 @@ import (
 const usage = `mx — media info / download / convert
 
 Usage:
-  mx                  open the TUI
-  mx info <file>      open the Info panel
+  mx                  browse the current folder and pick files
+  mx info <file>...   open the Info panel
   mx dl <url>         open the Download panel
   mx cv <file>... [fmt]  open the Convert panel (batch)
 `
@@ -32,7 +32,7 @@ func main() {
 
 func parseArgs(argv []string) (tab, []string, error) {
 	if len(argv) == 0 {
-		return tabInfo, nil, nil
+		return tabFiles, nil, nil
 	}
 	switch argv[0] {
 	case "info", "i":
