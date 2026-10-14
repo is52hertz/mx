@@ -128,7 +128,7 @@ func (m model) bodyView() string {
 	case m.infoFile == "":
 		return m.lang.t("Usage: mx info <file>")
 	case m.probeErr != nil:
-		return errStyle.Render("ffprobe: " + m.probeErr.Error())
+		return errStyle.Render(m.probeErr.Error())
 	case m.probe == nil:
 		return fmt.Sprintf(m.lang.t("Probing %s …"), m.infoFile)
 	}

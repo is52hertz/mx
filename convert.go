@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +20,7 @@ const (
 	rowQuality
 	rowScale
 	rowTrim
+	rowKeep // keep the decrypted .ncm audio when converting it further
 	rowCount
 )
 
@@ -58,6 +60,7 @@ type convert struct {
 	scaleIdx int
 	trim     trimMode
 	secs     string // seconds as typed, e.g. "90" or "1:30"
+	keep     bool
 
 	state    cvState
 	jobs     []cvJob
@@ -142,7 +145,44 @@ func (c *convert) qualityOK(q quality) bool {
 }
 
 func (c *convert) rowVisible(r cvRow) bool {
-	return r != rowScale || formats[c.fmtIdx].video
+	f := formats[c.fmtIdx]
+	switch r {
+	case rowQuality, rowTrim:
+		return !f.original
+	case rowScale:
+		return f.video
+	case rowKeep:
+		return !f.original && c.anyNCM()
+	}
+	return true
+}
+
+func (c *convert) anyNCM() bool {
+	for _, p := range c.probes {
+		if p.NCM != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// innerFormats lists the distinct formats inside the .ncm inputs, e.g. "mp3/flac".
+func (c *convert) innerFormats() string {
+	var exts []string
+	for _, p := range c.probes {
+		if p.NCM != "" && !slices.Contains(exts, p.NCM) {
+			exts = append(exts, p.NCM)
+		}
+	}
+	return strings.Join(exts, "/")
+}
+
+// outExt is the output extension for input i.
+func (c *convert) outExt(i int) string {
+	if formats[c.fmtIdx].original {
+		return c.probes[i].NCM
+	}
+	return formats[c.fmtIdx].ext
 }
 
 func (c *convert) trimSecs() (float64, bool) {
@@ -291,6 +331,8 @@ func (c *convert) step(d int) {
 		}
 	case rowTrim:
 		c.trim = trimMode(min(max(int(c.trim)+d, int(trimNone)), int(trimTail)))
+	case rowKeep:
+		c.keep = d > 0
 	}
 }
 
@@ -308,14 +350,20 @@ func (c *convert) start() tea.Cmd {
 func (c *convert) startNext() tea.Cmd {
 	for ; c.cur < len(c.jobs); c.cur++ {
 		j := &c.jobs[c.cur]
-		out, err := outputName(j.in, formats[c.fmtIdx].ext, true)
+		out, err := outputName(j.in, c.outExt(c.cur), true)
 		if err != nil {
 			j.err, j.done = err, true
 			continue
 		}
 		j.out = out
+		spec := jobSpec{in: j.in, out: out, ncm: j.probe.NCM != ""}
+		if !formats[c.fmtIdx].original {
+			opts, p := c.opts(), j.probe
+			spec.args = func(src, out string) []string { return ffmpegArgs(src, out, opts, p) }
+			spec.keep = spec.ncm && c.keep
+		}
 		c.outSecs, c.speed, c.started = 0, 0, time.Now()
-		c.run = startFFmpeg(ffmpegArgs(j.in, out, c.opts(), j.probe), out)
+		c.run = startJob(spec)
 		return c.run.listen()
 	}
 	c.state, c.run = cvDone, nil
@@ -355,7 +403,7 @@ func (c *convert) view(l lang) string {
 	case len(c.files) == 0:
 		return l.t("Usage: mx cv <file>... [format]")
 	case c.probeErr != nil:
-		return errStyle.Render("ffprobe: " + c.probeErr.Error())
+		return errStyle.Render(c.probeErr.Error())
 	case c.probes == nil:
 		return fmt.Sprintf(l.t("Probing %d file(s) …"), len(c.files))
 	case c.fmtIdx < 0:
@@ -377,25 +425,22 @@ func (c *convert) view(l lang) string {
 			prefix = sectionStyle.Render("▸ ")
 			lbl = labelStyle.Bold(true).Render(l.t(label))
 		}
-		parts := make([]string, len(values))
+		var parts []string
 		for i, v := range values {
+			if v == "" {
+				continue
+			}
+			if r == rowFormat && i > 0 && formats[i-1].video && !formats[i].video {
+				parts = append(parts, dimStyle.Render("│")) // video │ audio
+			}
 			v = " " + l.t(v) + " "
 			switch {
 			case i == selected:
-				parts[i] = selectedStyle.Render(v)
+				v = selectedStyle.Render(v)
 			case !ok(i):
-				parts[i] = dimStyle.Strikethrough(true).Render(v)
-			default:
-				parts[i] = v
+				v = dimStyle.Strikethrough(true).Render(v)
 			}
-		}
-		if r == rowFormat { // separate video and audio formats
-			for i, f := range formats {
-				if !f.video {
-					parts[i] = dimStyle.Render("│ ") + parts[i]
-					break
-				}
-			}
+			parts = append(parts, v)
 		}
 		b.WriteString(prefix + lbl + strings.Join(parts, " ") + suffix + "\n")
 	}
@@ -403,6 +448,12 @@ func (c *convert) view(l lang) string {
 	exts := make([]string, len(formats))
 	for i, f := range formats {
 		exts[i] = f.ext
+		if f.original {
+			exts[i] = "" // hidden unless there are .ncm inputs
+			if c.anyNCM() {
+				exts[i] = l.t("Original format") + " (" + c.innerFormats() + ")"
+			}
+		}
 	}
 	row(rowFormat, "Format", exts, c.fmtIdx, c.formatUsable, "   "+dimStyle.Render(l.t(formats[c.fmtIdx].desc)))
 
@@ -424,6 +475,12 @@ func (c *convert) view(l lang) string {
 	}
 	row(rowTrim, "Trim", []string{"All", "First", "Last"}, int(c.trim), func(int) bool { return true }, secs)
 
+	keep := 0
+	if c.keep {
+		keep = 1
+	}
+	row(rowKeep, "Keep decrypted", []string{"No", "Yes"}, keep, func(int) bool { return true }, "")
+
 	b.WriteString("\n")
 	outs := make([]string, 0, 2)
 	for i, f := range c.files {
@@ -434,12 +491,11 @@ func (c *convert) view(l lang) string {
 		if i > 0 && i < len(c.files)-1 {
 			continue
 		}
-		out, _ := outputName(f, formats[c.fmtIdx].ext, false)
+		out, _ := outputName(f, c.outExt(i), false)
 		outs = append(outs, filepath.Base(out))
 	}
 	b.WriteString("  " + labelStyle.Render(l.t("Output")) + " " + strings.Join(outs, " ") + dimStyle.Render(" "+l.t("(same folder)")) + "\n")
-	out, _ := outputName(c.files[0], formats[c.fmtIdx].ext, false)
-	b.WriteString("  " + labelStyle.Render(l.t("Command")) + " " + dimStyle.Render(shellJoin(append([]string{"ffmpeg"}, ffmpegArgs(c.files[0], out, c.opts(), c.probes[0])...))) + "\n\n")
+	b.WriteString("  " + labelStyle.Render(l.t("Command")) + " " + dimStyle.Render(c.commandPreview()) + "\n\n")
 
 	if hint := c.hint(l); hint != "" {
 		b.WriteString("  " + hint + "\n")
@@ -450,6 +506,22 @@ func (c *convert) view(l lang) string {
 	}
 	b.WriteString("  " + dimStyle.Render(keys))
 	return b.String()
+}
+
+// commandPreview shows what runs for the first input; the ncm2mp3 step is
+// simplified (mx decrypts into a temporary folder).
+func (c *convert) commandPreview() string {
+	in, p := c.files[0], c.probes[0]
+	if formats[c.fmtIdx].original {
+		return shellJoin([]string{"ncm2mp3", in})
+	}
+	out, _ := outputName(in, c.outExt(0), false)
+	src, prefix := in, ""
+	if p.NCM != "" {
+		src = strings.TrimSuffix(in, filepath.Ext(in)) + "." + p.NCM
+		prefix = shellJoin([]string{"ncm2mp3", in}) + " → "
+	}
+	return prefix + shellJoin(append([]string{"ffmpeg"}, ffmpegArgs(src, out, c.opts(), p)...))
 }
 
 func (c *convert) hint(l lang) string {
@@ -483,7 +555,10 @@ func (c *convert) inputView(l lang) string {
 		if v != nil {
 			parts = append(parts, fmt.Sprintf("%d×%d %s", v.Width, v.Height, v.CodecName))
 		}
-		if a != nil {
+		switch {
+		case p.NCM != "":
+			parts = append(parts, "NCM → "+p.NCM)
+		case a != nil:
 			parts = append(parts, fmt.Sprintf("%s %dch", a.CodecName, a.Channels))
 		}
 		parts = append(parts, fmtSize(p.Format.Size))

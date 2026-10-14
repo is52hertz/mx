@@ -82,6 +82,12 @@ var zh = map[string]string{
 	"Done: %d succeeded, %d failed":     "完成：成功 %d 个，失败 %d 个",
 	"Canceled: %d succeeded, %d failed": "已取消：成功 %d 个，失败 %d 个",
 	"enter back · q quit":               "enter 返回 · q 退出",
+
+	"Original format": "原格式",
+	"decrypt only":    "仅解密",
+	"Keep decrypted":  "保留解密文件",
+	"No":              "否",
+	"Yes":             "是",
 }
 
 // t translates an English UI string; unknown keys fall back to English.

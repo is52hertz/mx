@@ -36,6 +36,7 @@ const (
 
 type format struct {
 	ext      string
+	original bool // decrypt .ncm only, keeping the inner format
 	video    bool
 	lossless bool
 	desc     string
@@ -45,6 +46,7 @@ type format struct {
 }
 
 var formats = []format{
+	{ext: "original", original: true, desc: "decrypt only"},
 	{ext: "mp4", video: true, desc: "H.264 + AAC", vcopy: []string{"h264", "hevc", "av1", "mpeg4"}, acopy: []string{"aac", "mp3", "ac3", "eac3", "alac", "opus"}},
 	{ext: "mkv", video: true, desc: "H.264 + AAC", anyCopy: true},
 	{ext: "webm", video: true, desc: "VP9 + Opus", vcopy: []string{"vp8", "vp9", "av1"}, acopy: []string{"opus", "vorbis"}},
@@ -72,6 +74,9 @@ func mainStreams(p *probe) (v, a *stream) {
 }
 
 func (f format) usable(p *probe) bool {
+	if f.original {
+		return p.NCM != ""
+	}
 	v, a := mainStreams(p)
 	if f.video {
 		return v != nil
@@ -80,7 +85,7 @@ func (f format) usable(p *probe) bool {
 }
 
 func (f format) canCopy(p *probe) bool {
-	if f.ext == "gif" || !f.usable(p) {
+	if f.original || f.ext == "gif" || !f.usable(p) {
 		return false
 	}
 	if f.anyCopy {
@@ -239,16 +244,27 @@ type runner struct {
 	done   chan struct{}
 }
 
-// startFFmpeg runs ffmpeg in the background; out must already be reserved
-// by outputName and is deleted if the run fails or is canceled.
-func startFFmpeg(args []string, out string) *runner {
+// jobSpec describes one conversion. out must already be reserved by
+// outputName; it is deleted if the job fails or is canceled.
+type jobSpec struct {
+	in, out string
+	ncm     bool                           // decrypt in with ncm2mp3 first
+	args    func(src, out string) []string // ffmpeg args; nil = decrypt only
+	keep    bool                           // keep the decrypted file next to in
+}
+
+// errKeepFailed means the conversion succeeded but the decrypted file
+// could not be kept; the converted output stays.
+var errKeepFailed = errors.New("converted, but keeping the decrypted file failed")
+
+func startJob(spec jobSpec) *runner {
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &runner{cancel: cancel, msgs: make(chan tea.Msg), done: make(chan struct{})}
 	go func() {
 		defer close(r.msgs)
-		err := r.exec(ctx, args)
-		if err != nil {
-			os.Remove(out)
+		err := r.runJob(ctx, spec)
+		if err != nil && !errors.Is(err, errKeepFailed) {
+			os.Remove(spec.out)
 		}
 		close(r.done)
 		select {
@@ -257,6 +273,40 @@ func startFFmpeg(args []string, out string) *runner {
 		}
 	}()
 	return r
+}
+
+func (r *runner) runJob(ctx context.Context, spec jobSpec) error {
+	src := spec.in
+	if spec.ncm {
+		// A fresh dir next to the input: no name clashes, and same
+		// filesystem so the final rename is atomic.
+		tmp, err := os.MkdirTemp(filepath.Dir(spec.in), ".mx-ncm-")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(tmp)
+		if src, err = decryptNCM(ctx, spec.in, tmp); err != nil {
+			return err
+		}
+	}
+	if spec.args == nil {
+		return os.Rename(src, spec.out) // replaces the reserved placeholder
+	}
+	if err := r.exec(ctx, spec.args(src, spec.out)); err != nil {
+		return err
+	}
+	if spec.keep {
+		kept, err := outputName(spec.in, strings.TrimPrefix(filepath.Ext(src), "."), true)
+		if err == nil {
+			if err = os.Rename(src, kept); err != nil {
+				os.Remove(kept)
+			}
+		}
+		if err != nil {
+			return fmt.Errorf("%w: %v", errKeepFailed, err)
+		}
+	}
+	return nil
 }
 
 func (r *runner) exec(ctx context.Context, args []string) error {

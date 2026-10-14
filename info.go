@@ -26,6 +26,8 @@ type probe struct {
 		Tags           map[string]string `json:"tags"`
 	} `json:"format"`
 	Streams []stream `json:"streams"`
+
+	NCM string `json:"-"` // inner audio extension (e.g. "flac") when the input is an encrypted .ncm
 }
 
 type stream struct {
@@ -58,6 +60,9 @@ func runProbe(path string) tea.Cmd {
 }
 
 func probeFile(path string) (*probe, error) {
+	if isNCM(path) {
+		return probeNCM(path)
+	}
 	out, err := exec.Command("ffprobe", "-v", "error", "-print_format", "json",
 		"-show_format", "-show_streams", safeInput(path)).Output()
 	if err != nil {
@@ -84,7 +89,7 @@ func safeInput(path string) string {
 
 var (
 	sectionStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
-	labelStyle   = lipgloss.NewStyle().Width(13).Foreground(lipgloss.Color("8"))
+	labelStyle   = lipgloss.NewStyle().Width(15).Foreground(lipgloss.Color("8"))
 	errStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 )
 
